@@ -14,8 +14,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-REPO="${REPO:-iMostafaDavoodi/Oopsie}"
-TAP="${TAP:-iMostafaDavoodi/homebrew-oopsie}"
+REPO="${REPO:-Mostafa-Davoodi/Oopsie}"
+TAP="${TAP:-Mostafa-Davoodi/homebrew-oopsie}"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
 APP="build/Oopsie.app"
 ZIP="build/Oopsie-$VERSION.zip"
@@ -78,6 +78,14 @@ fi
 
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "✋ Commit your changes first. The release tag must match the code." >&2
+  exit 1
+fi
+
+OWNER="${REPO%%/*}"
+GH_USER="$(gh api user --jq .login)"
+if [[ "$GH_USER" != "$OWNER" ]]; then
+  echo "✋ gh is logged in as $GH_USER, but the repo belongs to $OWNER." >&2
+  echo "   Run: gh auth switch --user $OWNER" >&2
   exit 1
 fi
 

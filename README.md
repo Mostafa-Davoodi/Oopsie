@@ -48,7 +48,7 @@ Quit Oopsie                      ───────────────
 ## Install with Homebrew
 
 ```bash
-brew install --cask imostafadavoodi/oopsie/oopsie
+brew install --cask mostafa-davoodi/oopsie/oopsie
 ```
 
 This command also installs Apple's `container` tool. Then open **Oopsie** from your Applications folder.
@@ -68,7 +68,7 @@ This command also installs Apple's `container` tool. Then open **Oopsie** from y
 2. Get the code:
 
    ```bash
-   git clone https://github.com/iMostafaDavoodi/Oopsie.git
+   git clone https://github.com/Mostafa-Davoodi/Oopsie.git
    cd Oopsie
    ```
 
@@ -220,6 +220,6 @@ scripts/release.sh --publish  # also makes the GitHub release and updates the Ho
 2. Commit your changes.
 3. Run `scripts/release.sh --publish`.
 
-`--publish` needs the GitHub repo `iMostafaDavoodi/Oopsie` and the tap repo `iMostafaDavoodi/homebrew-oopsie`. Set `REPO` and `TAP` to use other repos.
+`--publish` needs `gh` to be logged in as the repo owner (`gh auth switch --user Mostafa-Davoodi`). It also needs the GitHub repo `Mostafa-Davoodi/Oopsie` and the tap repo `Mostafa-Davoodi/homebrew-oopsie`. Set `REPO` and `TAP` to use other repos.
 
 To sign and notarize the app, set `DEVELOPER_ID` (a "Developer ID Application" certificate) and `NOTARY_PROFILE` (from `xcrun notarytool store-credentials`). Without them, the app is only ad-hoc signed, and macOS blocks it on first open.
