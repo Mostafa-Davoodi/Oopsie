@@ -185,7 +185,7 @@ final class OopsieStore: ObservableObject {
             guard self.terminal.isFocused, let key = event.charactersIgnoringModifiers else { return event }
             switch key {
             case "v": self.terminal.paste(); return nil
-            case "c": self.terminal.copy(); return nil
+            case "c": self.terminal.copySelection(); return nil
             case "a": self.terminal.selectAll(); return nil
             default: return event
             }

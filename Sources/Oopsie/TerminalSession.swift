@@ -55,7 +55,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     }
 
     func paste() { view?.paste(self) }
-    func copy() { view?.copy(self) }
+    func copySelection() { view?.copy(self) }
     func selectAll() { view?.selectAll(self) }
 
     // MARK: LocalProcessTerminalViewDelegate
