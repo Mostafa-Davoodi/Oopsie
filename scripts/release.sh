@@ -24,7 +24,7 @@ CASK="build/oopsie.rb"
 ./make-app.sh
 
 if [[ -n "${DEVELOPER_ID:-}" ]]; then
-  echo "🔏 Signing with $DEVELOPER_ID…"
+  echo "🔏 Signing with ${DEVELOPER_ID}…"
   codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$APP"
 fi
 
@@ -89,11 +89,11 @@ if [[ "$GH_USER" != "$OWNER" ]]; then
   exit 1
 fi
 
-echo "🚀 Publishing v$VERSION to $REPO…"
+echo "🚀 Publishing v$VERSION to ${REPO}…"
 git push origin HEAD
 gh release create "v$VERSION" "$ZIP" --repo "$REPO" --title "Oopsie $VERSION" --generate-notes
 
-echo "🍺 Updating $TAP…"
+echo "🍺 Updating ${TAP}…"
 TAP_DIR="build/tap"
 rm -rf "$TAP_DIR"
 gh repo clone "$TAP" "$TAP_DIR"
