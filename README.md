@@ -1,73 +1,216 @@
-# 💥 Oopsie
+# Oopsie
 
 **Break Linux. Not your Mac.**
 
-Oopsie is a tiny menu bar app that gives you a disposable Linux machine in one click. Spawn it, mess it up, blow it away, and start fresh.
+Oopsie is a small macOS menu bar app for throwaway Ubuntu machines. Click once to get a fresh Linux machine. SSH into it, share a folder with it, break it, and remove it. Your Mac is never at risk.
+
+Each machine is a lightweight VM made by Apple's [`container`](https://github.com/apple/container) tool. Oopsie is a simple, native menu on top of that tool.
 
 ```
-Spawn → Play → Break → Repeat
+Oopsie
+2 machines · 1 running
+──────────────────────────────
+MACHINES
+● oopsie-1a2b                ▸   SSH in Terminal
+  Running · 192.168.64.3         Copy SSH Command
+● oopsie-77f0                ▸   Copy IP Address
+  Stopped                        Open Root Shell
+──────────────────────────────   ───────────────
++ New Machine                    Open Shared Folder
+  New Machine with Folder…       ───────────────
+──────────────────────────────   Stop
+Quit Oopsie                      ───────────────
+                                 Remove
 ```
 
-- **🐧 Spawn Linux** starts a fresh Ubuntu machine and drops you into a full interactive terminal, right in the menu bar.
-- **💥 Oopsie!** destroys the machine and everything in it, with a small explosion. *"Well, that happened."*
-- **🔄 Do It Again** gives you a brand-new machine.
-- **🪦 Body count** tracks how many Linuxes you've destroyed. Your rank goes from *Pristine* up to *rm -rf Royalty*.
+## Features
 
-No settings, no dashboards, no container management. That's on purpose.
+- **One-click Linux.** A new Ubuntu machine is ready in about 15 seconds.
+- **Real SSH.** Each machine runs an SSH server and has its own IP address. Use Terminal, VS Code, scp or any SSH tool.
+- **Shared folders.** Mount a Mac folder into a machine. Edit on your Mac, run in Linux.
+- **Many machines.** Each machine has its own line in the menu, with its actions in a submenu.
+- **Notifications.** macOS tells you when a machine is ready. Click the notification to SSH in.
+- **Small and native.** A plain macOS menu. No windows, no Dock icon, no settings.
 
 ## Requirements
 
-- A Mac with Apple silicon
-- macOS 26 (Tahoe) is recommended. Apple's `container` also runs on macOS 15, but with networking limits.
-- Apple's [`container`](https://github.com/apple/container/releases) CLI. Install the signed `.pkg` from the releases page.
-- Xcode 26 (or its command line tools). The SwiftTerm dependency needs Swift 6.2.
+| | |
+| --- | --- |
+| Mac | Apple silicon (M1 or later) |
+| macOS | 15 or later. 26 or later is recommended, because macOS 15 has networking limits. |
+| Apple's `container` tool | Homebrew installs it for you. Or get it from [its releases page](https://github.com/apple/container/releases). |
+| To build from source | Xcode 16 or later (or its command line tools) |
 
-You don't need to start the container engine yourself. Oopsie starts it on first spawn and installs the default kernel if it's missing.
-
-## Build & run
+## Install with Homebrew
 
 ```bash
-./make-app.sh             # builds build/Oopsie.app
-./make-app.sh --install   # builds, copies to /Applications, launches
+brew install --cask imostafadavoodi/oopsie/oopsie
 ```
 
-To hack on it, run `swift run` from the repo, or `open Package.swift` in Xcode and press Run.
+This command also installs Apple's `container` tool. Then open **Oopsie** from your Applications folder.
 
-The first spawn downloads the Ubuntu image (about 30 MB) once. After that, a new machine takes a couple of seconds.
+> **First open:** if the release is not notarized, macOS blocks the app. Go to **System Settings → Privacy & Security** and click **Open Anyway**. You only do this once.
 
-## Shortcuts
+## Set up from source
 
-| Keys | Action |
+1. Install Apple's `container` tool:
+
+   ```bash
+   brew install container
+   ```
+
+   You do not need to start the container engine. Oopsie starts it when you make the first machine.
+
+2. Get the code:
+
+   ```bash
+   git clone https://github.com/iMostafaDavoodi/Oopsie.git
+   cd Oopsie
+   ```
+
+3. Build and install the app:
+
+   ```bash
+   ./make-app.sh --install
+   ```
+
+   This builds `build/Oopsie.app`, copies it to `/Applications`, and opens it. To build without installing, run `./make-app.sh`.
+
+## Use
+
+1. Click the starburst icon in the menu bar, then click **New Machine**.
+   The first machine downloads Ubuntu (about 30 MB) one time.
+2. Wait for the notification "oopsie-xxxx is ready". The menu also shows the machine's IP address instead of "Setting up SSH…".
+3. Click the notification, or open the machine's submenu and click **SSH in Terminal**.
+
+The menu bar icon is filled when at least one machine is running.
+
+### SSH from your own tools
+
+Click **Copy SSH Command**, or run:
+
+```bash
+ssh -i ~/.ssh/oopsie_ed25519 root@<ip>
+```
+
+Oopsie makes the key `~/.ssh/oopsie_ed25519` the first time you make a machine. It also adds your own `~/.ssh/id_*.pub` keys to each new machine, so `ssh root@<ip>` works with your normal key too. Password login is off. Only your Mac can reach the machines.
+
+### Shared folders
+
+Click **New Machine with Folder…** and choose a folder on your Mac. The folder shows up in the machine as `/root/<folder name>`. Changes go both ways. **Open Shared Folder** in the machine's submenu opens the folder in Finder.
+
+- You can share a folder only when you make a machine.
+- Removing the machine does not change the folder on your Mac.
+- Files that the machine writes in the folder belong to root.
+
+### Machine actions
+
+| Action | What it does |
 | --- | --- |
-| ⌘↩ | Spawn Linux / Do It Again |
-| ⌘⌫ | Oopsie! (destroy) |
-| ⌘C / ⌘V / ⌘A | Copy / paste / select all in the terminal |
+| SSH in Terminal | Opens a Terminal window with SSH to the machine. |
+| Copy SSH Command | Copies the full `ssh` command. |
+| Copy IP Address | Copies the machine's IP address. |
+| Open Root Shell | Opens a root shell without SSH. Works even if the SSH setup fails. |
+| Open Shared Folder | Opens the shared Mac folder in Finder. |
+| Stop / Start | Stops or starts the machine. Its files stay. |
+| Remove | Deletes the machine and everything in it. There is no confirmation. |
 
-Easter eggs: click the penguin, and the red dot on the terminal's title bar also works as an Oopsie button.
+Machines keep running when you quit Oopsie, and they show again when you open it.
 
-## How it works
+## Troubleshooting
 
-Oopsie is a small wrapper around Apple's `container` CLI:
+| Problem | What to do |
+| --- | --- |
+| The menu says "Apple's container tool is not installed". | Run `brew install container`. |
+| The menu says "Container engine is stopped". | Click **Start Engine**, or run `container system start`. |
+| A machine shows "Running · SSH unavailable". | Click **Open Root Shell**, then run `cat /var/log/oopsie-setup.log`. The setup needs internet access to install the SSH server. |
+| SSH does not connect. | Run `ping <ip>`. If it fails, run `container system stop` and then `container system start`. |
+| No notifications. | Allow notifications for Oopsie in **System Settings → Notifications**. Notifications only work in the built app, not with `swift run`. |
+| An action fails. | The error shows at the top of the menu. Click it to copy the full message. |
+
+To see all machines from the command line, run `container list --all`.
+
+## Uninstall
+
+1. Remove the machines with **Remove** in the menu (or `container delete --force <name>`).
+2. Remove the app:
+
+   ```bash
+   brew uninstall --cask oopsie        # if you installed with Homebrew
+   rm -rf /Applications/Oopsie.app     # if you built from source
+   ```
+
+3. Optional: delete Oopsie's SSH key with `rm ~/.ssh/oopsie_ed25519 ~/.ssh/oopsie_ed25519.pub`.
+
+## Development
+
+Run the app from the terminal:
+
+```bash
+swift run
+```
+
+Or open the project in Xcode:
+
+```bash
+open Package.swift
+```
+
+Then choose the **Oopsie** scheme and **My Mac**, and press ⌘R.
+
+To try the menu without Apple's `container` tool or real machines, use the fake script in this repo:
+
+```bash
+OOPSIE_CONTAINER="$PWD/scripts/fake-container" swift run
+```
+
+It shows one running and one stopped machine. The actions do nothing.
+
+### Project layout
+
+```
+Package.swift            Swift package (no dependencies)
+Sources/Oopsie/
+  OopsieApp.swift        app entry point
+  MenuController.swift   the menu bar icon and its native menu
+  OopsieStore.swift      machine list, polling, actions and shared folders
+  ContainerCLI.swift     talks to Apple's `container`, plus the machine setup script
+  SSH.swift              Oopsie's SSH key and Terminal windows
+  Notifier.swift         "machine is ready" notifications
+Resources/
+  Info.plist             app bundle settings and version
+  AppIcon.png            app icon
+make-app.sh              builds Oopsie.app
+scripts/
+  release.sh             release zip and Homebrew cask
+  fake-container         stand-in `container` CLI for development
+```
+
+### How it works
 
 | Action | Under the hood |
 | --- | --- |
-| Spawn | `container run --detach --name oopsie-xxxx ubuntu:latest sleep infinity` |
-| Terminal | `container exec --interactive --tty oopsie-xxxx bash`, hosted in [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) |
-| Oopsie! | `container delete --force oopsie-xxxx` |
+| New Machine | `container run --detach --name oopsie-xxxx --env OOPSIE_KEYS=… ubuntu:latest sh -c <setup>` |
+| Shared folder | adds `--volume <mac folder>:/root/<name>` |
+| List | `container list --all --format json`, every few seconds |
+| SSH | `ssh root@<machine ip>` in a new Terminal window |
+| Open Root Shell | `container exec --interactive --tty oopsie-xxxx bash` |
+| Stop / Start | `container stop` / `container start` |
+| Remove | `container delete --force oopsie-xxxx` |
 
-Each machine is a lightweight VM, so even `rm -rf --no-preserve-root /` only breaks the penguin. If you type `exit`, the machine keeps running and you can jump back in. Quitting Oopsie destroys the current machine. Leftover `oopsie-*` machines from a crash are cleaned up the next time Oopsie launches.
+The machine's main process installs `openssh-server` (only the first time), adds the SSH keys, starts `sshd`, and then waits. It runs again on every start, so SSH also works after a stop and start.
 
-## Project layout
+## Release
 
-```
-Sources/Oopsie/
-  OopsieApp.swift       menu bar scene, app delegate, status icon
-  OopsieStore.swift     the Spawn → Play → Break → Repeat state machine
-  ContainerCLI.swift    talks to Apple's `container`
-  TerminalSession.swift SwiftTerm terminal and its "Grape Soda" theme
-  PopoverView.swift     every screen in the popover
-  Effects.swift         chunky buttons, shake effect, explosion
-  Quips.swift           all the jokes
+```bash
+scripts/release.sh            # builds build/Oopsie-<version>.zip and build/oopsie.rb
+scripts/release.sh --publish  # also makes the GitHub release and updates the Homebrew tap
 ```
 
-Want a different distro? Change `ContainerCLI.image`, for example to `docker.io/library/alpine:latest`. Alpine has no `bash`, so also change the shell in `shellArguments` to `sh`.
+1. Change `CFBundleShortVersionString` in `Resources/Info.plist`.
+2. Commit your changes.
+3. Run `scripts/release.sh --publish`.
+
+`--publish` needs the GitHub repo `iMostafaDavoodi/Oopsie` and the tap repo `iMostafaDavoodi/homebrew-oopsie`. Set `REPO` and `TAP` to use other repos.
+
+To sign and notarize the app, set `DEVELOPER_ID` (a "Developer ID Application" certificate) and `NOTARY_PROFILE` (from `xcrun notarytool store-credentials`). Without them, the app is only ad-hoc signed, and macOS blocks it on first open.
