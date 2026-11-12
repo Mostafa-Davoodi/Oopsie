@@ -101,6 +101,7 @@ mkdir -p "$TAP_DIR/Casks"
 cp "$CASK" "$TAP_DIR/Casks/oopsie.rb"
 git -C "$TAP_DIR" add Casks/oopsie.rb
 git -C "$TAP_DIR" commit -m "oopsie $VERSION"
-git -C "$TAP_DIR" push
+# Push with gh's login, not a GitHub login that the Keychain may hold for another account.
+git -C "$TAP_DIR" -c credential.helper= -c credential.helper='!gh auth git-credential' push
 
 echo "✅ Done. Install with: brew install --cask ${TAP%%/*}/${TAP#*/homebrew-}/oopsie"
