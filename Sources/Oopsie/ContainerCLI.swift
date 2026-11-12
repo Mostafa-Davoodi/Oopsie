@@ -17,13 +17,31 @@ struct CommandResult {
     }
 }
 
+/// One Linux machine (an `oopsie-*` container).
+struct Machine: Identifiable, Equatable {
+    let id: String
+    let isRunning: Bool
+    /// Raw state from `container list`, e.g. "running" or "stopped".
+    let state: String
+    let ip: String?
+}
+
+/// How far a running machine is with its SSH setup.
+enum SetupState: Equatable {
+    case pending, ready, failed
+}
+
 /// A thin wrapper around Apple's `container` CLI (github.com/apple/container).
 enum ContainerCLI {
-    /// The one and only distro. No config, remember?
     static let image = "docker.io/library/ubuntu:latest"
     static let namePrefix = "oopsie-"
 
     static var executablePath: String? {
+        // For development: point Oopsie at another `container` binary or a fake one.
+        if let custom = ProcessInfo.processInfo.environment["OOPSIE_CONTAINER"],
+           FileManager.default.isExecutableFile(atPath: custom) {
+            return custom
+        }
         let candidates = [
             "/usr/local/bin/container",
             "/opt/homebrew/bin/container",
@@ -50,35 +68,7 @@ enum ContainerCLI {
         guard let exe = executablePath else {
             return CommandResult(status: -1, stdout: "", stderr: "container CLI not found")
         }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: exe)
-        process.arguments = args
-        process.standardInput = FileHandle.nullDevice
-        let out = Pipe(), err = Pipe()
-        process.standardOutput = out
-        process.standardError = err
-
-        do { try process.run() } catch {
-            return CommandResult(status: -1, stdout: "", stderr: error.localizedDescription)
-        }
-
-        let errBox = DataBox()
-        let errHandle = err.fileHandleForReading
-        let group = DispatchGroup()
-        group.enter()
-        DispatchQueue.global().async {
-            errBox.data = errHandle.readDataToEndOfFile()
-            group.leave()
-        }
-        let outData = out.fileHandleForReading.readDataToEndOfFile()
-        group.wait()
-        process.waitUntilExit()
-
-        return CommandResult(
-            status: process.terminationStatus,
-            stdout: String(decoding: outData, as: UTF8.self),
-            stderr: String(decoding: errBox.data, as: UTF8.self)
-        )
+        return Shell.run(exe, args)
     }
 
     // MARK: - Engine
@@ -109,49 +99,174 @@ enum ContainerCLI {
         return namePrefix + String(repeating: "0", count: 4 - hex.count) + hex
     }
 
-    /// Starts a long-lived container we can exec shells into.
-    static func startMachine(named name: String) async -> CommandResult {
-        await run(["run", "--detach", "--name", name, image, "sleep", "infinity"])
+    /// Lists all `oopsie-*` machines. Returns nil when the engine can't be reached.
+    static func listMachines() async -> [Machine]? {
+        let result = await run(["list", "--all", "--format", "json"])
+        guard result.ok else { return nil }
+        return parseList(result.stdout)
     }
 
-    /// Gives the shell a little personality: colourful prompt and a welcome note.
-    static func decorate(machine name: String) async {
-        let snippet = #"""
+    static func parseList(_ json: String) -> [Machine]? {
+        guard let data = json.data(using: .utf8),
+              let items = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]]
+        else { return nil }
 
-        # --- Oopsie ---
-        export PS1='\[\e[1;38;5;205m\]oopsie\[\e[0m\]@\[\e[38;5;141m\]\h\[\e[0m\]:\[\e[1;38;5;117m\]\w\[\e[0m\]\$ '
-        printf '\n  \e[1;38;5;205mOopsie!\e[0m  A fresh Ubuntu box with zero consequences.\n'
-        printf '  \e[2mInstall things. Delete things. Nothing in here can touch your Mac.\e[0m\n\n'
-        """#
-        let b64 = Data(snippet.utf8).base64EncodedString()
-        _ = await run(["exec", name, "sh", "-c", "echo \(b64) | base64 -d >> /root/.bashrc"])
+        return items.compactMap { item -> Machine? in
+            let config = item["configuration"] as? [String: Any]
+            guard let id = (config?["id"] ?? item["id"]) as? String, id.hasPrefix(namePrefix) else { return nil }
+            let status = item["status"]
+            let state = (status as? String)
+                ?? ((status as? [String: Any])?["state"] as? String)
+                ?? (item["state"] as? String)
+                ?? "unknown"
+            var withoutConfig = item
+            withoutConfig["configuration"] = nil
+            return Machine(
+                id: id,
+                isRunning: state.lowercased() == "running",
+                state: state.lowercased(),
+                ip: findIPv4(in: withoutConfig)
+            )
+        }
+        .sorted { $0.id < $1.id }
     }
 
-    static func destroy(machine name: String) async {
-        destroySync(machine: name)
+    /// Finds the first `ipv4Address` (or older `address`) value, without its "/24" suffix.
+    static func findIPv4(in value: Any) -> String? {
+        if let dict = value as? [String: Any] {
+            for key in ["ipv4Address", "address"] {
+                if let text = dict[key] as? String, let ip = ipv4(from: text) { return ip }
+            }
+            for nested in dict.values {
+                if let ip = findIPv4(in: nested) { return ip }
+            }
+        } else if let array = value as? [Any] {
+            for nested in array {
+                if let ip = findIPv4(in: nested) { return ip }
+            }
+        }
+        return nil
     }
 
-    static func destroySync(machine name: String) {
-        if runSync(["delete", "--force", name]).ok { return }
+    private static func ipv4(from text: String) -> String? {
+        let address = String(text.split(separator: "/").first ?? "")
+        let parts = address.split(separator: ".")
+        guard parts.count == 4, parts.allSatisfy({ UInt8($0) != nil }) else { return nil }
+        return address
+    }
+
+    /// Creates and starts a machine. Its main process installs and runs sshd,
+    /// so SSH keeps working for as long as the machine runs (and after a restart).
+    /// `mount` is an optional (Mac folder, machine path) pair to bind-mount.
+    static func createMachine(named name: String, authorizedKeys: String,
+                              mount: (host: String, machine: String)? = nil) async -> CommandResult {
+        let keys = Data(authorizedKeys.utf8).base64EncodedString()
+        var args = ["run", "--detach", "--name", name, "--env", "OOPSIE_KEYS=\(keys)"]
+        if let mount { args += ["--volume", "\(mount.host):\(mount.machine)"] }
+        return await run(args + [image, "sh", "-c", setupScript])
+    }
+
+    static func start(_ name: String) async -> CommandResult {
+        await run(["start", name])
+    }
+
+    static func stop(_ name: String) async -> CommandResult {
+        await run(["stop", name])
+    }
+
+    static func delete(_ name: String) async -> CommandResult {
+        let result = await run(["delete", "--force", name])
+        if result.ok { return result }
         // Older CLIs: stop first, then delete.
-        _ = runSync(["stop", "--time", "0", name])
-        _ = runSync(["delete", name])
+        _ = await run(["stop", "--time", "0", name])
+        return await run(["delete", name])
     }
 
-    /// Removes any machines left behind by a crash or a force-quit.
-    static func cleanUpStrays() async {
-        let list = await run(["list", "--all", "--quiet"])
-        guard list.ok else { return }
-        let strays = list.stdout
-            .split(whereSeparator: \.isNewline)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { $0.hasPrefix(namePrefix) }
-        for name in strays { await destroy(machine: name) }
+    static func setupState(of name: String) async -> SetupState {
+        let check = "if [ -f /run/oopsie-ready ]; then echo ready; elif [ -f /run/oopsie-failed ]; then echo failed; fi"
+        let result = await run(["exec", name, "sh", "-c", check])
+        switch result.stdout.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "ready": return .ready
+        case "failed": return .failed
+        default: return .pending
+        }
     }
 
-    /// Arguments for the interactive shell the terminal runs.
-    static func shellArguments(for name: String) -> [String] {
-        ["exec", "--interactive", "--tty", name, "bash"]
+    /// Command line for a root shell without SSH.
+    static func shellCommand(for name: String) -> String? {
+        guard let exe = executablePath else { return nil }
+        return "\(Shell.quote(exe)) exec --interactive --tty \(Shell.quote(name)) bash"
+    }
+
+    /// The machine's main process. It runs on every start, so it must be safe to run again.
+    static let setupScript = #"""
+    rm -f /run/oopsie-ready /run/oopsie-failed
+    trap 'exit 0' TERM INT
+    idle() { while :; do sleep 3600 & wait $!; done; }
+    fail() { touch /run/oopsie-failed; idle; }
+
+    if [ ! -x /usr/sbin/sshd ]; then
+      export DEBIAN_FRONTEND=noninteractive
+      { apt-get update && apt-get install -y --no-install-recommends openssh-server; } \
+        > /var/log/oopsie-setup.log 2>&1 || fail
+    fi
+
+    mkdir -p /run/sshd /root/.ssh && chmod 700 /root/.ssh
+    echo "$OOPSIE_KEYS" | base64 -d > /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys
+    ssh-keygen -A > /dev/null 2>&1
+    /usr/sbin/sshd -o PasswordAuthentication=no -o PermitRootLogin=prohibit-password \
+      >> /var/log/oopsie-setup.log 2>&1 || fail
+
+    if ! grep -q '# oopsie' /root/.bashrc 2>/dev/null; then
+      cat >> /root/.bashrc <<'EOF'
+    # oopsie
+    export PS1='\[\e[1;35m\]oopsie\[\e[0m\]@\h:\[\e[1;34m\]\w\[\e[0m\]\$ '
+    EOF
+    fi
+
+    touch /run/oopsie-ready
+    idle
+    """#
+}
+
+/// Runs a local executable and collects its output.
+enum Shell {
+    static func run(_ executable: String, _ args: [String]) -> CommandResult {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = args
+        process.standardInput = FileHandle.nullDevice
+        let out = Pipe(), err = Pipe()
+        process.standardOutput = out
+        process.standardError = err
+
+        do { try process.run() } catch {
+            return CommandResult(status: -1, stdout: "", stderr: error.localizedDescription)
+        }
+
+        let errBox = DataBox()
+        let errHandle = err.fileHandleForReading
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global().async {
+            errBox.data = errHandle.readDataToEndOfFile()
+            group.leave()
+        }
+        let outData = out.fileHandleForReading.readDataToEndOfFile()
+        group.wait()
+        process.waitUntilExit()
+
+        return CommandResult(
+            status: process.terminationStatus,
+            stdout: String(decoding: outData, as: UTF8.self),
+            stderr: String(decoding: errBox.data, as: UTF8.self)
+        )
+    }
+
+    /// Quotes a string for /bin/sh.
+    static func quote(_ text: String) -> String {
+        let safe = text.allSatisfy { $0.isLetter || $0.isNumber || "-_./~=:@".contains($0) }
+        return safe ? text : "'" + text.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
     }
 }
 
