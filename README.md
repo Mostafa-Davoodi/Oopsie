@@ -1,6 +1,10 @@
-# Oopsie
+<p align="center">
+  <img src="Resources/AppIcon.png" alt="Oopsie app icon" width="160">
+</p>
 
-**Break Linux. Not your Mac.**
+<h1 align="center">Oopsie</h1>
+
+<p align="center"><strong>Break Linux. Not your Mac.</strong></p>
 
 Oopsie is a small macOS menu bar app for throwaway Ubuntu machines. Click once to get a fresh Linux machine. SSH into it, share a folder with it, break it, and remove it. Your Mac is never at risk.
 
@@ -83,7 +87,11 @@ This command also installs Apple's `container` tool. Then open **Oopsie** from y
 2. Wait for the notification "oopsie-xxxx is ready". The menu also shows the machine's IP address instead of "Setting up SSH…".
 3. Click the notification, or open the machine's submenu and click **SSH in Terminal**.
 
-The menu bar icon is filled when at least one machine is running.
+The menu bar icon shows if a machine is running:
+
+| No machine running | At least one machine running |
+| :---: | :---: |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/menubar-idle-dark.svg"><img src="docs/images/menubar-idle-light.svg" alt="Outlined starburst menu bar icon" width="36" height="36"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/menubar-running-dark.svg"><img src="docs/images/menubar-running-light.svg" alt="Filled starburst menu bar icon" width="36" height="36"></picture> |
 
 ### SSH from your own tools
 
@@ -180,6 +188,7 @@ Sources/Oopsie/
 Resources/
   Info.plist             app bundle settings and version
   AppIcon.png            app icon
+docs/images/             menu bar icons for this README
 make-app.sh              builds Oopsie.app
 scripts/
   release.sh             release zip and Homebrew cask
