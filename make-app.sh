@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Builds Oopsie.app into ./build. Usage: ./make-app.sh [--install]
 set -euo pipefail
 cd "$(dirname "$0")"

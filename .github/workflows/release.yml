@@ -1,0 +1,86 @@
+# Makes a GitHub release when you push a version tag, for example v0.2.0.
+#
+# The tag must match CFBundleShortVersionString in Resources/Info.plist.
+# If the release already exists (because you ran scripts/release.sh --publish),
+# this workflow does nothing, so the zip and the cask's checksum stay in step.
+#
+# Optional: to also update the Homebrew tap, add a repository secret named
+# TAP_GITHUB_TOKEN: a fine-grained token with "Contents: read and write"
+# on the tap repo (<owner>/homebrew-oopsie) only.
+#
+# Releases built here are ad-hoc signed, like local builds without DEVELOPER_ID.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: macos-15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
+      REPO: ${{ github.repository }}
+      TAP: ${{ github.repository_owner }}/homebrew-oopsie
+      TAP_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if the release already exists
+        id: check
+        run: |
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            echo "Release $TAG already exists. Nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check the tag matches the app version
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
+          if [[ "v$VERSION" != "$TAG" ]]; then
+            echo "::error::Tag $TAG does not match version $VERSION in Resources/Info.plist."
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Test
+        if: steps.check.outputs.skip == 'false'
+        run: swift test
+
+      - name: Build the zip and the cask
+        if: steps.check.outputs.skip == 'false'
+        run: scripts/release.sh
+
+      - name: Create the GitHub release
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          gh release create "$TAG" "build/Oopsie-$VERSION.zip" \
+            --repo "$REPO" --title "Oopsie $VERSION" --generate-notes --verify-tag
+
+      - name: Keep the cask as a build artifact
+        if: steps.check.outputs.skip == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: oopsie-cask
+          path: build/oopsie.rb
+
+      - name: Update the Homebrew tap
+        if: steps.check.outputs.skip == 'false' && env.TAP_TOKEN != ''
+        run: |
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/${TAP}.git" build/tap-ci
+          mkdir -p build/tap-ci/Casks
+          cp build/oopsie.rb build/tap-ci/Casks/oopsie.rb
+          cd build/tap-ci
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/oopsie.rb
+          git commit -m "oopsie $VERSION"
+          git push

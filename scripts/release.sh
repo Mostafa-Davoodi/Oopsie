@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Builds a release zip of Oopsie.app and the matching Homebrew cask.
 #
 # Usage:

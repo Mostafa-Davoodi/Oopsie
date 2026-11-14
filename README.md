@@ -6,6 +6,11 @@
 
 <p align="center"><strong>Break Linux. Not your Mac.</strong></p>
 
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0"></a>
+  <a href="https://github.com/Mostafa-Davoodi/Oopsie/actions/workflows/ci.yml"><img src="https://github.com/Mostafa-Davoodi/Oopsie/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+</p>
+
 Oopsie is a small macOS menu bar app for throwaway Ubuntu machines. Click once to get a fresh Linux machine. SSH into it, share a folder with it, break it, and remove it. Your Mac is never at risk.
 
 Each machine is a lightweight VM made by Apple's [`container`](https://github.com/apple/container) tool. Oopsie is a simple, native menu on top of that tool.
@@ -166,6 +171,12 @@ open Package.swift
 
 Then choose the **Oopsie** scheme and **My Mac**, and press ⌘R.
 
+Run the tests:
+
+```bash
+swift test
+```
+
 To try the menu without Apple's `container` tool or real machines, use the fake script in this repo:
 
 ```bash
@@ -185,6 +196,7 @@ Sources/Oopsie/
   ContainerCLI.swift     talks to Apple's `container`, plus the machine setup script
   SSH.swift              Oopsie's SSH key and Terminal windows
   Notifier.swift         "machine is ready" notifications
+Tests/OopsieTests/       unit tests (run with `swift test`)
 Resources/
   Info.plist             app bundle settings and version
   AppIcon.png            app icon
@@ -193,6 +205,9 @@ make-app.sh              builds Oopsie.app
 scripts/
   release.sh             release zip and Homebrew cask
   fake-container         stand-in `container` CLI for development
+.github/workflows/
+  ci.yml                 builds and tests every push and pull request
+  release.yml            makes a GitHub release from a version tag
 ```
 
 ### How it works
@@ -223,3 +238,17 @@ scripts/release.sh --publish  # also makes the GitHub release and updates the Ho
 `--publish` needs `gh` to be logged in as the repo owner (`gh auth switch --user Mostafa-Davoodi`). It also needs the GitHub repo `Mostafa-Davoodi/Oopsie` and the tap repo `Mostafa-Davoodi/homebrew-oopsie`. Set `REPO` and `TAP` to use other repos.
 
 To sign and notarize the app, set `DEVELOPER_ID` (a "Developer ID Application" certificate) and `NOTARY_PROFILE` (from `xcrun notarytool store-credentials`). Without them, the app is only ad-hoc signed, and macOS blocks it on first open.
+
+Or let GitHub Actions make the release: push a tag that matches the version, for example `git tag v0.2.0 && git push origin v0.2.0`. The release workflow tests, builds and uploads the zip. It also updates the Homebrew tap if the repo has a `TAP_GITHUB_TOKEN` secret (a fine-grained token that can write to the tap repo). If the release already exists, the workflow does nothing.
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first. Every commit needs a `Signed-off-by` line (`git commit -s`). Everyone in the project follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+To report a security problem, do not open an issue. Follow [SECURITY.md](SECURITY.md).
+
+## License
+
+Oopsie is licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE).
+
+Apple's `container` tool is a separate project with its own license. Oopsie runs it but does not include it.

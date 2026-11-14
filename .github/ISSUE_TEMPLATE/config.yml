@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/Mostafa-Davoodi/Oopsie/security/advisories/new
+    about: Report security problems privately. Please don't open a public issue.
+  - name: Problem with Apple's container tool
+    url: https://github.com/apple/container/issues
+    about: Problems in Apple's container tool itself belong in its own project.

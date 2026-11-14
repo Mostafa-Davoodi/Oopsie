@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
 # A stand-in for Apple's `container` CLI, for trying Oopsie's menu without real machines.
 # Usage: OOPSIE_CONTAINER="$PWD/scripts/fake-container" swift run
 # It shows one running and one stopped machine. Actions succeed but do nothing.

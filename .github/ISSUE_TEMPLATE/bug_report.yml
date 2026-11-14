@@ -1,0 +1,53 @@
+name: Bug report
+description: Something in Oopsie doesn't work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Include the error message from the top of the menu, if there is one. Click it to copy the full text.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Click New Machine
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: input
+    id: oopsie-version
+    attributes:
+      label: Oopsie version
+      description: Shown in Finder's Get Info for Oopsie.app, or `brew info --cask oopsie`.
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: macOS 26.1
+    validations:
+      required: true
+  - type: input
+    id: container-version
+    attributes:
+      label: Apple container version
+      description: Output of `container --version`.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: For SSH problems, open a root shell on the machine and run `cat /var/log/oopsie-setup.log`.
+      render: text

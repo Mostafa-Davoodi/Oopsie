@@ -1,0 +1,8 @@
+Oopsie
+Copyright 2026 Mostafa Davoodi
+
+This product is licensed under the Apache License, Version 2.0.
+See the LICENSE file for the full text.
+
+Oopsie runs Apple's `container` tool (https://github.com/apple/container)
+as a separate program. That tool is not included in this product.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+
 import AppKit
 
 /// Oopsie's own SSH key, plus the commands that use it.
