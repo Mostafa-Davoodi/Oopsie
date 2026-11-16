@@ -19,7 +19,7 @@ final class OopsieStore: ObservableObject {
     @Published private(set) var setup: [String: SetupState] = [:]
     /// Machines with an action in progress (start, stop, remove).
     @Published private(set) var working: Set<String> = []
-    /// What a long app-wide task is doing right now, e.g. "Downloading Ubuntu…".
+    /// What a long app-wide task is doing right now, e.g. "Downloading Fedora…".
     @Published private(set) var activity: String?
     @Published private(set) var lastError: String?
     /// Shared folders by machine name. `container list` doesn't report mounts, so we remember them.
@@ -110,7 +110,7 @@ final class OopsieStore: ObservableObject {
     }
 
     /// Asks for a Mac folder, then creates a machine with that folder mounted in /root.
-    func newMachineWithFolder() {
+    func newMachineWithFolder(_ distro: Distro) {
         guard activity == nil, ContainerCLI.isInstalled else { return }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -120,10 +120,10 @@ final class OopsieStore: ObservableObject {
         panel.message = "Choose a folder to share with the new machine. It shows up in /root."
         NSApp.activate()
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        newMachine(sharing: url)
+        newMachine(distro, sharing: url)
     }
 
-    func newMachine(sharing folderURL: URL? = nil) {
+    func newMachine(_ distro: Distro, sharing folderURL: URL? = nil) {
         guard activity == nil, ContainerCLI.isInstalled else { return }
 
         var folder: SharedFolder?
@@ -148,16 +148,17 @@ final class OopsieStore: ObservableObject {
                 guard started.ok else { lastError = "Engine didn't start. \(started.summary)"; return }
             }
 
-            if !(await ContainerCLI.hasImage()) {
-                activity = "Downloading Ubuntu…"
-                let pulled = await ContainerCLI.pullImage()
-                guard pulled.ok else { lastError = "Couldn't download Ubuntu. \(pulled.summary)"; return }
+            if !(await ContainerCLI.hasImage(distro)) {
+                activity = "Downloading \(distro.name)…"
+                let pulled = await ContainerCLI.pullImage(distro)
+                guard pulled.ok else { lastError = "Couldn't download \(distro.name). \(pulled.summary)"; return }
             }
 
-            activity = "Creating machine…"
-            let name = ContainerCLI.newMachineName()
+            activity = "Creating \(distro.name) machine…"
+            let name = ContainerCLI.newMachineName(for: distro)
             let created = await ContainerCLI.createMachine(
                 named: name,
+                distro: distro,
                 authorizedKeys: SSH.authorizedKeys(),
                 mount: folder.map { ($0.hostPath, $0.machinePath) }
             )
