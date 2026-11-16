@@ -25,7 +25,7 @@ Run the app from source:
 swift run
 ```
 
-You don't need real machines to work on the menu. The fake `container` script shows one running and one stopped machine:
+You don't need real machines to work on the menu. The fake `container` script shows three machines of different distros:
 
 ```bash
 OOPSIE_CONTAINER="$PWD/scripts/fake-container" swift run

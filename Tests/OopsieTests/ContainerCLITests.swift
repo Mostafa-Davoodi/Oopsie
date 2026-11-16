@@ -106,13 +106,111 @@ final class FindIPv4Tests: XCTestCase {
 }
 
 final class MachineNameTests: XCTestCase {
-    func testNewMachineNameIsPrefixAndFourHexDigits() {
-        for _ in 0..<200 {
-            let name = ContainerCLI.newMachineName()
-            XCTAssertTrue(name.hasPrefix(ContainerCLI.namePrefix), name)
-            let suffix = name.dropFirst(ContainerCLI.namePrefix.count)
-            XCTAssertEqual(suffix.count, 4, name)
-            XCTAssertTrue(suffix.allSatisfy(\.isHexDigit), name)
+    func testNewMachineNameIsPrefixDistroAndFourHexDigits() {
+        for distro in Distro.all {
+            for _ in 0..<50 {
+                let name = ContainerCLI.newMachineName(for: distro)
+                let start = ContainerCLI.namePrefix + distro.id + "-"
+                XCTAssertTrue(name.hasPrefix(start), name)
+                let suffix = name.dropFirst(start.count)
+                XCTAssertEqual(suffix.count, 4, name)
+                XCTAssertTrue(suffix.allSatisfy(\.isHexDigit), name)
+            }
+        }
+    }
+
+    func testNewMachineNameReadsBackAsItsDistro() {
+        for distro in Distro.all {
+            XCTAssertEqual(Distro.of(machine: ContainerCLI.newMachineName(for: distro)), distro)
+        }
+    }
+}
+
+final class DistroTests: XCTestCase {
+    func testIDsAreUniqueAndFitInAMachineName() {
+        let ids = Distro.all.map(\.id)
+        XCTAssertEqual(Set(ids).count, ids.count)
+        for id in ids {
+            XCTAssertFalse(id.isEmpty)
+            XCTAssertTrue(id.allSatisfy { $0.isLowercase || $0.isNumber }, id)
+        }
+    }
+
+    func testDefaultIsUbuntu() {
+        XCTAssertEqual(Distro.default, .ubuntu)
+        XCTAssertTrue(Distro.all.contains(.default))
+    }
+
+    func testWithID() {
+        XCTAssertEqual(Distro.withID("arch"), .arch)
+        XCTAssertNil(Distro.withID("gentoo"))
+    }
+
+    func testOnlyX86ImagesUseRosetta() {
+        XCTAssertTrue(Distro.arch.usesRosetta)
+        XCTAssertTrue(Distro.cachyos.usesRosetta)
+        XCTAssertFalse(Distro.ubuntu.usesRosetta)
+        XCTAssertFalse(Distro.alpine.usesRosetta)
+        for distro in Distro.all {
+            XCTAssertTrue(["arm64", "amd64"].contains(distro.arch), distro.id)
+        }
+    }
+
+    func testMachineNameWithoutDistroIsUbuntu() {
+        // Machines made before Oopsie had distros.
+        XCTAssertEqual(Distro.of(machine: "oopsie-1a2b"), .ubuntu)
+    }
+
+    func testMachineNameWithDistro() {
+        XCTAssertEqual(Distro.of(machine: "oopsie-fedora-00ff"), .fedora)
+        XCTAssertEqual(Distro.of(machine: "oopsie-cachyos-beef"), .cachyos)
+    }
+
+    func testUnknownMachineNames() {
+        XCTAssertNil(Distro.of(machine: "oopsie-gentoo-1a2b"))
+        XCTAssertNil(Distro.of(machine: "oopsie-a-b-c"))
+        XCTAssertNil(Distro.of(machine: "postgres"))
+    }
+
+    func testMachineKnowsItsDistro() {
+        let machine = Machine(id: "oopsie-alpine-0001", isRunning: false, state: "stopped", ip: nil)
+        XCTAssertEqual(machine.distro, .alpine)
+    }
+}
+
+final class CreateArgumentsTests: XCTestCase {
+    func testNativeDistroHasNoArchFlag() {
+        let args = ContainerCLI.createArguments(named: "oopsie-debian-0001", distro: .debian, authorizedKeys: "key\n")
+        XCTAssertFalse(args.contains("--arch"))
+        XCTAssertEqual(Array(args.prefix(4)), ["run", "--detach", "--name", "oopsie-debian-0001"])
+        XCTAssertEqual(Array(args.suffix(4)), [Distro.debian.image, "sh", "-c", ContainerCLI.setupScript])
+    }
+
+    func testX86DistroRunsWithRosetta() throws {
+        let args = ContainerCLI.createArguments(named: "oopsie-arch-0001", distro: .arch, authorizedKeys: "key\n")
+        let index = try XCTUnwrap(args.firstIndex(of: "--arch"))
+        XCTAssertEqual(args[index + 1], "amd64")
+        XCTAssertTrue(args.contains(Distro.arch.image))
+    }
+
+    func testKeysAreBase64AndMountIsAdded() {
+        let args = ContainerCLI.createArguments(named: "oopsie-ubuntu-0001", distro: .ubuntu, authorizedKeys: "ssh-ed25519 AAAA\n",
+                                                mount: (host: "/Users/me/My Project", machine: "/root/My-Project"))
+        XCTAssertTrue(args.contains("OOPSIE_KEYS=" + Data("ssh-ed25519 AAAA\n".utf8).base64EncodedString()))
+        XCTAssertTrue(args.contains("/Users/me/My Project:/root/My-Project"))
+    }
+
+    func testSetupScriptKnowsEveryPackageManager() {
+        for tool in ["apt-get", "dnf", "pacman", "apk", "zypper"] {
+            XCTAssertTrue(ContainerCLI.setupScript.contains("command -v \(tool)"), tool)
+        }
+    }
+
+    func testRootShellFallsBackToSh() {
+        let command = ContainerCLI.shellCommand(for: "oopsie-alpine-0001")
+        // Nil on machines without the container CLI, like CI.
+        if let command {
+            XCTAssertTrue(command.contains("exec bash || exec sh"), command)
         }
     }
 }

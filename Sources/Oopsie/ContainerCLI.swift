@@ -26,6 +26,9 @@ struct Machine: Identifiable, Equatable {
     /// Raw state from `container list`, e.g. "running" or "stopped".
     let state: String
     let ip: String?
+
+    /// The distro the machine was made from, or nil if Oopsie doesn't know it.
+    var distro: Distro? { Distro.of(machine: id) }
 }
 
 /// How far a running machine is with its SSH setup.
@@ -35,7 +38,6 @@ enum SetupState: Equatable {
 
 /// A thin wrapper around Apple's `container` CLI (github.com/apple/container).
 enum ContainerCLI {
-    static let image = "docker.io/library/ubuntu:latest"
     static let namePrefix = "oopsie-"
 
     static var executablePath: String? {
@@ -86,19 +88,20 @@ enum ContainerCLI {
 
     // MARK: - Images
 
-    static func hasImage() async -> Bool {
-        await run(["image", "inspect", image]).ok
+    static func hasImage(_ distro: Distro) async -> Bool {
+        await run(["image", "inspect", distro.image]).ok
     }
 
-    static func pullImage() async -> CommandResult {
-        await run(["image", "pull", image])
+    static func pullImage(_ distro: Distro) async -> CommandResult {
+        await run(["image", "pull", "--arch", distro.arch, distro.image])
     }
 
     // MARK: - Machines
 
-    static func newMachineName() -> String {
+    /// A new name like `oopsie-fedora-1a2b`.
+    static func newMachineName(for distro: Distro) -> String {
         let hex = String(UInt32.random(in: 0...0xFFFF), radix: 16)
-        return namePrefix + String(repeating: "0", count: 4 - hex.count) + hex
+        return namePrefix + distro.id + "-" + String(repeating: "0", count: 4 - hex.count) + hex
     }
 
     /// Lists all `oopsie-*` machines. Returns nil when the engine can't be reached.
@@ -160,12 +163,19 @@ enum ContainerCLI {
     /// Creates and starts a machine. Its main process installs and runs sshd,
     /// so SSH keeps working for as long as the machine runs (and after a restart).
     /// `mount` is an optional (Mac folder, machine path) pair to bind-mount.
-    static func createMachine(named name: String, authorizedKeys: String,
+    static func createMachine(named name: String, distro: Distro, authorizedKeys: String,
                               mount: (host: String, machine: String)? = nil) async -> CommandResult {
+        await run(createArguments(named: name, distro: distro, authorizedKeys: authorizedKeys, mount: mount))
+    }
+
+    static func createArguments(named name: String, distro: Distro, authorizedKeys: String,
+                                mount: (host: String, machine: String)? = nil) -> [String] {
         let keys = Data(authorizedKeys.utf8).base64EncodedString()
         var args = ["run", "--detach", "--name", name, "--env", "OOPSIE_KEYS=\(keys)"]
+        // arm64 is the default on Apple silicon. x86-64 images run with Rosetta.
+        if distro.arch != "arm64" { args += ["--arch", distro.arch] }
         if let mount { args += ["--volume", "\(mount.host):\(mount.machine)"] }
-        return await run(args + [image, "sh", "-c", setupScript])
+        return args + [distro.image, "sh", "-c", setupScript]
     }
 
     static func start(_ name: String) async -> CommandResult {
@@ -194,35 +204,70 @@ enum ContainerCLI {
         }
     }
 
-    /// Command line for a root shell without SSH.
+    /// Command line for a root shell without SSH. Uses bash, or sh where there is no bash (Alpine).
     static func shellCommand(for name: String) -> String? {
         guard let exe = executablePath else { return nil }
-        return "\(Shell.quote(exe)) exec --interactive --tty \(Shell.quote(name)) bash"
+        let shell = "command -v bash >/dev/null && exec bash || exec sh"
+        return "\(Shell.quote(exe)) exec --interactive --tty \(Shell.quote(name)) sh -c \(Shell.quote(shell))"
     }
 
     /// The machine's main process. It runs on every start, so it must be safe to run again.
+    /// It installs the SSH server with whichever package manager the distro has.
     static let setupScript = #"""
     rm -f /run/oopsie-ready /run/oopsie-failed
     trap 'exit 0' TERM INT
     idle() { while :; do sleep 3600 & wait $!; done; }
     fail() { touch /run/oopsie-failed; idle; }
+    log=/var/log/oopsie-setup.log
 
-    if [ ! -x /usr/sbin/sshd ]; then
-      export DEBIAN_FRONTEND=noninteractive
-      { apt-get update && apt-get install -y --no-install-recommends openssh-server; } \
-        > /var/log/oopsie-setup.log 2>&1 || fail
+    install_sshd() {
+      if command -v apt-get > /dev/null; then
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update && apt-get install -y --no-install-recommends openssh-server
+      elif command -v dnf > /dev/null; then
+        dnf install -y --setopt=install_weak_deps=False openssh-server
+      elif command -v pacman > /dev/null; then
+        # pacman's download sandbox needs kernel features the machine may not have.
+        nosandbox=$(pacman -Sh 2>/dev/null | grep -q -- --disable-sandbox && echo --disable-sandbox)
+        pacman -Syu --noconfirm --needed $nosandbox openssh
+      elif command -v apk > /dev/null; then
+        apk add --no-cache openssh-server openssh-keygen
+      elif command -v zypper > /dev/null; then
+        zypper --non-interactive install openssh-server
+      else
+        echo "No known package manager (apt-get, dnf, pacman, apk or zypper)."
+        return 1
+      fi
+    }
+
+    find_sshd() { command -v sshd || echo /usr/sbin/sshd; }
+    sshd=$(find_sshd)
+    if [ ! -x "$sshd" ]; then
+      install_sshd > "$log" 2>&1 || fail
+      sshd=$(find_sshd)
     fi
 
     mkdir -p /run/sshd /root/.ssh && chmod 700 /root/.ssh
     echo "$OOPSIE_KEYS" | base64 -d > /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys
+    # sshd refuses keys for a locked root account ("!" password), which some images have.
+    sed -i 's/^root:![^:]*:/root:*:/' /etc/shadow 2>/dev/null
+    # pam_loginuid can't work in a container. When it is required, it ends every SSH login.
+    sed -i 's/^session\([[:space:]]*\)required\([[:space:]]*\)pam_loginuid/session\1optional\2pam_loginuid/' \
+      /etc/pam.d/sshd 2>/dev/null
     ssh-keygen -A > /dev/null 2>&1
-    /usr/sbin/sshd -o PasswordAuthentication=no -o PermitRootLogin=prohibit-password \
-      >> /var/log/oopsie-setup.log 2>&1 || fail
+    "$sshd" -o PasswordAuthentication=no -o PermitRootLogin=prohibit-password >> "$log" 2>&1 || fail
 
     if ! grep -q '# oopsie' /root/.bashrc 2>/dev/null; then
       cat >> /root/.bashrc <<'EOF'
     # oopsie
     export PS1='\[\e[1;35m\]oopsie\[\e[0m\]@\h:\[\e[1;34m\]\w\[\e[0m\]\$ '
+    EOF
+    fi
+    # SSH logins read a profile, not .bashrc. Add one where the image has none.
+    if [ ! -e /root/.bash_profile ] && [ ! -e /root/.bash_login ] && [ ! -e /root/.profile ]; then
+      cat > /root/.profile <<'EOF'
+    # oopsie
+    if [ -n "$BASH_VERSION" ]; then . /root/.bashrc; else PS1='oopsie@\h:\w\$ '; fi
     EOF
     fi
 

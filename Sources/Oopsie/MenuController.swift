@@ -21,8 +21,8 @@ final class MenuController: NSObject, NSMenuDelegate {
     private let emptyItem = NSMenuItem()
     private let startEngineItem: ActionItem
     private let installItem: ActionItem
-    private let newItem: ActionItem
-    private let newWithFolderItem: ActionItem
+    private let newItem: NSMenuItem
+    private let newWithFolderItem: NSMenuItem
     private let quitItem: ActionItem
     private let separators = (0..<3).map { _ in NSMenuItem.separator() }
     private var machineEntries: [String: MachineEntry] = [:]
@@ -33,9 +33,9 @@ final class MenuController: NSObject, NSMenuDelegate {
         installItem = ActionItem("Install container…", symbol: "arrow.down.circle") {
             NSWorkspace.shared.open(URL(string: "https://github.com/apple/container/releases")!)
         }
-        newItem = ActionItem("New Machine", symbol: "plus") { store.newMachine() }
-        newWithFolderItem = ActionItem("New Machine with Folder…", symbol: "folder.badge.plus") {
-            store.newMachineWithFolder()
+        newItem = Self.distroMenu("New Machine", symbol: "plus") { store.newMachine($0) }
+        newWithFolderItem = Self.distroMenu("New Machine with Folder", symbol: "folder.badge.plus") {
+            store.newMachineWithFolder($0)
         }
         quitItem = ActionItem("Quit Oopsie", symbol: nil) { NSApp.terminate(nil) }
         super.init()
@@ -111,6 +111,25 @@ final class MenuController: NSObject, NSMenuDelegate {
         Icons.replaceItems(of: menu, with: items)
     }
 
+    /// An item with a submenu of distros. Picking one runs `action` with it.
+    private static func distroMenu(_ title: String, symbol: String,
+                                   action: @escaping (Distro) -> Void) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+        for distro in Distro.all where !distro.usesRosetta {
+            submenu.addItem(ActionItem(distro.name, symbol: nil) { action(distro) })
+        }
+        submenu.addItem(.separator())
+        submenu.addItem(.sectionHeader(title: "x86-64 with Rosetta · slower"))
+        for distro in Distro.all where distro.usesRosetta {
+            submenu.addItem(ActionItem(distro.name, symbol: nil) { action(distro) })
+        }
+        item.submenu = submenu
+        return item
+    }
+
     private var headerSubtitle: String {
         if let activity = store.activity { return activity }
         switch store.engine {
@@ -161,7 +180,7 @@ private final class MachineEntry {
     func update(machine: Machine, setup: SetupState?, folder shared: SharedFolder?, busy: Bool) {
         let sshReady = machine.isRunning && setup == .ready && machine.ip != nil
 
-        let (status, color): (String, NSColor) = {
+        let (state, color): (String, NSColor) = {
             if busy { return ("Working…", .systemOrange) }
             guard machine.isRunning else { return (machine.state.capitalized, .tertiaryLabelColor) }
             switch setup {
@@ -170,6 +189,7 @@ private final class MachineEntry {
             default: return ("Setting up SSH…", .systemOrange)
             }
         }()
+        let status = [machine.distro?.name, state].compactMap { $0 }.joined(separator: " · ")
         if item.subtitle != status { item.subtitle = status }
         item.image = Icons.dot(color)
 
@@ -211,6 +231,7 @@ private final class MachineEntry {
 private final class HeaderView: NSView {
     private let icon = NSImageView()
     private let title = NSTextField(labelWithString: "Oopsie")
+    private let version = NSTextField(labelWithString: HeaderView.appVersion.map { "v" + $0 } ?? "")
     private let subtitle = NSTextField(labelWithString: "")
     private let spinner = NSProgressIndicator()
 
@@ -221,6 +242,9 @@ private final class HeaderView: NSView {
         icon.image = NSApp.applicationIconImage
         icon.imageScaling = .scaleProportionallyUpOrDown
         title.font = .systemFont(ofSize: 13, weight: .semibold)
+        version.font = .systemFont(ofSize: 11)
+        version.textColor = .tertiaryLabelColor
+        version.isHidden = version.stringValue.isEmpty
         subtitle.font = .systemFont(ofSize: 11)
         subtitle.textColor = .secondaryLabelColor
         subtitle.lineBreakMode = .byTruncatingTail
@@ -228,7 +252,13 @@ private final class HeaderView: NSView {
         spinner.controlSize = .small
         spinner.isDisplayedWhenStopped = false
 
-        let labels = NSStackView(views: [title, subtitle])
+        // "Oopsie v0.3.0", with the version in a lighter colour.
+        let titleRow = NSStackView(views: [title, version])
+        titleRow.orientation = .horizontal
+        titleRow.alignment = .firstBaseline
+        titleRow.spacing = 5
+
+        let labels = NSStackView(views: [titleRow, subtitle])
         labels.orientation = .vertical
         labels.alignment = .leading
         labels.spacing = 1
@@ -251,6 +281,11 @@ private final class HeaderView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    /// The app's version from Info.plist. Nil when running with `swift run`, which has no Info.plist.
+    static var appVersion: String? {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    }
 
     func update(subtitle text: String, busy: Bool) {
         if subtitle.stringValue != text { subtitle.stringValue = text }

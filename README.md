@@ -11,30 +11,31 @@
   <a href="https://github.com/Mostafa-Davoodi/Oopsie/actions/workflows/ci.yml"><img src="https://github.com/Mostafa-Davoodi/Oopsie/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 
-Oopsie is a small macOS menu bar app for throwaway Ubuntu machines. Click once to get a fresh Linux machine. SSH into it, share a folder with it, break it, and remove it. Your Mac is never at risk.
+Oopsie is a small macOS menu bar app for throwaway Linux machines: Ubuntu, Debian, Fedora, Alpine, Arch Linux or CachyOS. Click once to get a fresh Linux machine. SSH into it, share a folder with it, break it, and remove it. Your Mac is never at risk.
 
 Each machine is a lightweight VM made by Apple's [`container`](https://github.com/apple/container) tool. Oopsie is a simple, native menu on top of that tool.
 
 ```
-Oopsie
+Oopsie v0.3.0
 2 machines · 1 running
-──────────────────────────────
+──────────────────────────────────
 MACHINES
-● oopsie-1a2b                ▸   SSH in Terminal
-  Running · 192.168.64.3         Copy SSH Command
-● oopsie-77f0                ▸   Copy IP Address
-  Stopped                        Open Root Shell
-──────────────────────────────   ───────────────
-+ New Machine                    Open Shared Folder
-  New Machine with Folder…       ───────────────
-──────────────────────────────   Stop
-Quit Oopsie                      ───────────────
-                                 Remove
+● oopsie-ubuntu-1a2b             ▸   SSH in Terminal
+  Ubuntu · Running · 192.168.64.3    Copy SSH Command
+● oopsie-arch-77f0               ▸   Copy IP Address
+  Arch Linux · Stopped               Open Root Shell
+──────────────────────────────────   ───────────────
++ New Machine                    ▸   Open Shared Folder
+  New Machine with Folder        ▸   ───────────────
+──────────────────────────────────   Stop
+Quit Oopsie                          ───────────────
+                                     Remove
 ```
 
 ## Features
 
 - **One-click Linux.** A new Ubuntu machine is ready in about 15 seconds.
+- **Many distros.** Ubuntu, Debian, Fedora and Alpine run natively. Arch Linux and CachyOS run with Rosetta.
 - **Real SSH.** Each machine runs an SSH server and has its own IP address. Use Terminal, VS Code, scp or any SSH tool.
 - **Shared folders.** Mount a Mac folder into a machine. Edit on your Mac, run in Linux.
 - **Many machines.** Each machine has its own line in the menu, with its actions in a submenu.
@@ -87,8 +88,8 @@ This command also installs Apple's `container` tool. Then open **Oopsie** from y
 
 ## Use
 
-1. Click the starburst icon in the menu bar, then click **New Machine**.
-   The first machine downloads Ubuntu (about 30 MB) one time.
+1. Click the starburst icon in the menu bar, then choose **New Machine → Ubuntu** (or another distro).
+   Each distro is downloaded the first time you use it. Ubuntu is about 30 MB.
 2. Wait for the notification "oopsie-xxxx is ready". The menu also shows the machine's IP address instead of "Setting up SSH…".
 3. Click the notification, or open the machine's submenu and click **SSH in Terminal**.
 
@@ -97,6 +98,21 @@ The menu bar icon shows if a machine is running:
 | No machine running | At least one machine running |
 | :---: | :---: |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/menubar-idle-dark.svg"><img src="docs/images/menubar-idle-light.svg" alt="Outlined starburst menu bar icon" width="36" height="36"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/menubar-running-dark.svg"><img src="docs/images/menubar-running-light.svg" alt="Filled starburst menu bar icon" width="36" height="36"></picture> |
+
+### Distros
+
+| Distro | Image | Notes |
+| --- | --- | --- |
+| Ubuntu | `ubuntu:latest` | The default. |
+| Debian | `debian:latest` | |
+| Fedora | `fedora:latest` | |
+| Alpine | `alpine:latest` | Very small. Has `sh`, not `bash`. |
+| Arch Linux | `archlinux:latest` | x86-64 only, so it runs with Rosetta. Slower to set up and to run. |
+| CachyOS | `cachyos/cachyos:latest` | x86-64 only, so it runs with Rosetta. A large download. |
+
+The machine name shows its distro, for example `oopsie-fedora-3c4d`. Machines made by older versions of Oopsie (`oopsie-1a2b`) are Ubuntu.
+
+Arch Linux and CachyOS need Rosetta on your Mac. If it isn't installed, run `softwareupdate --install-rosetta`.
 
 ### SSH from your own tools
 
@@ -110,7 +126,7 @@ Oopsie makes the key `~/.ssh/oopsie_ed25519` the first time you make a machine. 
 
 ### Shared folders
 
-Click **New Machine with Folder…** and choose a folder on your Mac. The folder shows up in the machine as `/root/<folder name>`. Changes go both ways. **Open Shared Folder** in the machine's submenu opens the folder in Finder.
+Choose **New Machine with Folder** and a distro, then choose a folder on your Mac. The folder shows up in the machine as `/root/<folder name>`. Changes go both ways. **Open Shared Folder** in the machine's submenu opens the folder in Finder.
 
 - You can share a folder only when you make a machine.
 - Removing the machine does not change the folder on your Mac.
@@ -136,6 +152,7 @@ Machines keep running when you quit Oopsie, and they show again when you open it
 | --- | --- |
 | The menu says "Apple's container tool is not installed". | Run `brew install container`. |
 | The menu says "Container engine is stopped". | Click **Start Engine**, or run `container system start`. |
+| An Arch Linux or CachyOS machine doesn't start. | Install Rosetta with `softwareupdate --install-rosetta`. |
 | A machine shows "Running · SSH unavailable". | Click **Open Root Shell**, then run `cat /var/log/oopsie-setup.log`. The setup needs internet access to install the SSH server. |
 | SSH does not connect. | Run `ping <ip>`. If it fails, run `container system stop` and then `container system start`. |
 | No notifications. | Allow notifications for Oopsie in **System Settings → Notifications**. Notifications only work in the built app, not with `swift run`. |
@@ -183,7 +200,7 @@ To try the menu without Apple's `container` tool or real machines, use the fake 
 OOPSIE_CONTAINER="$PWD/scripts/fake-container" swift run
 ```
 
-It shows one running and one stopped machine. The actions do nothing.
+It shows three machines: an older Ubuntu one, a running Fedora one and a stopped Arch Linux one. The actions do nothing.
 
 ### Project layout
 
@@ -214,15 +231,16 @@ scripts/
 
 | Action | Under the hood |
 | --- | --- |
-| New Machine | `container run --detach --name oopsie-xxxx --env OOPSIE_KEYS=… ubuntu:latest sh -c <setup>` |
+| New Machine | `container run --detach --name oopsie-<distro>-xxxx --env OOPSIE_KEYS=… <image> sh -c <setup>` |
+| x86-64 distro | adds `--arch amd64`, so the machine runs with Rosetta |
 | Shared folder | adds `--volume <mac folder>:/root/<name>` |
 | List | `container list --all --format json`, every few seconds |
 | SSH | `ssh root@<machine ip>` in a new Terminal window |
-| Open Root Shell | `container exec --interactive --tty oopsie-xxxx bash` |
+| Open Root Shell | `container exec --interactive --tty oopsie-xxxx sh -c 'exec bash'` (or `sh` where there is no bash) |
 | Stop / Start | `container stop` / `container start` |
 | Remove | `container delete --force oopsie-xxxx` |
 
-The machine's main process installs `openssh-server` (only the first time), adds the SSH keys, starts `sshd`, and then waits. It runs again on every start, so SSH also works after a stop and start.
+The machine's main process installs the SSH server with the distro's package manager (`apt-get`, `dnf`, `pacman`, `apk` or `zypper`, only the first time), adds the SSH keys, starts `sshd`, and then waits. It runs again on every start, so SSH also works after a stop and start.
 
 ## Release
 
